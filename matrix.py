@@ -346,15 +346,6 @@ BUY / OWNER - @its_MATRiX_KiNG '''
    
     bot.reply_to(message, response)
 
-@bot.message_handler(commands=['plan'])
-def welcome_plan(message):
-    user_name = message.from_user.first_name
-    response = f'''{user_name}, 
-    Purchase VIP DDOS Plan From @its_MATRiX_KiNG
-    Join Channel @MATRiX_CHEATS
-'''
-    bot.reply_to(message, response)
-
 @bot.message_handler(commands=['admincmd'])
 def welcome_plan(message):
     user_id = str(message.chat.id)
