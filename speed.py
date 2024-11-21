@@ -10,9 +10,10 @@ import sys
 import time 
 import logging
 import socket
+import asyncio
 import pytz  # Import pytz for timezone handling
 
-bot = telebot.TeleBot('7858493439:AAGbtHzHHZguQoJzAney4Ccer1ZUisC-bDI')
+bot = telebot.TeleBot('7599785141:AAHuEi4nik5vPSMDZ_g3jFlWeKTzRO53v6Y')
 
 # Admin user IDs
 admin_id = ["7418099890"]
