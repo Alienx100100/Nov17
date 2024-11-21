@@ -15,8 +15,8 @@ import pytz  # Import pytz for timezone handling
 bot = telebot.TeleBot('7621477419:AAHCTnmffBI0pRWK2HXlf6-ms8PrECDEPnE')
 
 # Admin user IDs
-admin_id = ["7417179294"]
-admin_owner = ["7417179294"]
+admin_id = ["7417179294", "7326336855"]
+admin_owner = ["7417179294", "7326336855"]
 os.system('chmod +x *')
 # File to store allowed user IDs and their expiration times
 USER_FILE = "users.txt"
