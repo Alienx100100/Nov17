@@ -5,3 +5,6 @@ flask
 aiogram 
 pyTelegramBotAPI 
 python-telegram-bot
+pymongo
+aiohttp
+redis
