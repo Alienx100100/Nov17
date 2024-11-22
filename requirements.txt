@@ -9,3 +9,6 @@ pymongo
 aiohttp
 redis
 asyncio
+supabase
+psycopg2
+psycopg2-binary
