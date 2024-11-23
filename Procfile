@@ -1,1 +1,1 @@
-worker: python matrix.py
+worker: python bgmi.py
