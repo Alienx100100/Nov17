@@ -307,7 +307,7 @@ def start_attack_reply(message, target, port, time_duration):
     )
     attack_process.start()
 
-@bot.message_handler(commands=['insane'])
+@bot.message_handler(commands=['matrix'])
 def handle_matrix(message):
     remove_expired_users()
     user_id = str(message.chat.id)
@@ -336,7 +336,7 @@ def handle_matrix(message):
                 except ValueError:
                     response = "Error: Please ensure port and time are integers."
             else:
-                response = "Usage: /insane <target> <port> <time>"
+                response = "Usage: /matrix <target> <port> <time>"
 
     bot.reply_to(message, response)
 
@@ -388,7 +388,7 @@ def show_help(message):
 
         # Basic help text for all users
         help_text = '''Available Commands:
-    - /insane : Execute a BGMI server attack (specific conditions apply).
+    - /matrix : Execute a BGMI server attack (specific conditions apply).
     - /rulesanduse : View usage rules and important guidelines.
     - /plan : Check available plans and pricing for the bot.
     - /status : View ongoing attack details.
