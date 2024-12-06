@@ -12,7 +12,7 @@ import socket
 
 bot = telebot.TeleBot("7599785141:AAGokC8HZXRhjcvSkzd1jBSsinBoNSEX6NU", threaded=False)
 
-AUTHORIZED_USERS = [6862918172]
+AUTHORIZED_USERS = [7418099890]
 
 #  track of user attacks
 user_attacks = {}
