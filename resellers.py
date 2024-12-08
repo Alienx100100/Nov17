@@ -82,6 +82,8 @@ def welcome(message):
 • Use /prices for pricing details
 • Use /balance to check balance
 
+🔥Bot: @MatrixCheats_ddos_bot
+
 🔗 𝗢𝗳𝗳𝗶𝗰𝗶𝗮𝗹 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀:
 • Channel: @MATRIX_CHEATS
 
