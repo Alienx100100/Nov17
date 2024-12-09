@@ -126,7 +126,7 @@ def welcome(message):
 • Channel: @MATRIX_CHEATS
 
 💫 𝗦𝘁𝗮𝗿𝘁 𝗥𝗲𝘀𝗲𝗹𝗹𝗶𝗻𝗴:
-Contact @its_MATRIX_King to become a reseller
+Contact @its_MATRIX_King to become a Offical Reseller
 """
     bot.reply_to(message, response)
 
