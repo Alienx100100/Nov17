@@ -25,7 +25,7 @@ def get_connection():
 
 def release_connection(conn):
     connection_pool.putconn(conn)
-    
+
 # Bot Configuration
 RESELLER_BOT_TOKEN = '7490965174:AAHmssJ7JPflECb1YCJlkjFwkC-aCbLnLW8'
 ADMIN_IDS = ["7418099890"]  # Add admin Telegram IDs
@@ -157,12 +157,10 @@ def show_help(message):
 • /addreseller - Register new reseller
 • /addbalance - Add balance to reseller
 • /allresellers - View all resellers
+• /removecredits - Remove credits from reseller
+• /removereseller - Delete reseller account
 • /broadcast - Send mass message
-
-⚡️ 𝗥𝗘𝗦𝗘𝗟𝗟𝗘𝗥 𝗠𝗔𝗡𝗔𝗚𝗘𝗠𝗘𝗡𝗧:
-• /addreseller <id> <balance>
-• /addbalance <id> <amount>
-• /broadcast <message>"""
+"""
 
     help_text += """
 
@@ -526,37 +524,159 @@ def show_all_resellers(message):
     if str(message.chat.id) not in ADMIN_IDS:
         bot.reply_to(message, "⛔️ Access Denied: Admin only command")
         return
-        
+
     try:
         cursor.execute("""
-            SELECT telegram_id, username, balance, created_at 
-            FROM resellers 
-            ORDER BY created_at DESC
+            SELECT r.telegram_id, r.username, r.balance, r.created_at 
+            FROM resellers r
+            ORDER BY r.created_at DESC
         """)
         resellers = cursor.fetchall()
-        
+
         if not resellers:
             bot.reply_to(message, "📝 No resellers found")
             return
-            
+
         response = "👥 𝗔𝗰𝘁𝗶𝘃𝗲 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿𝘀:\n\n"
         
         for reseller in resellers:
             telegram_id, username, balance, created_at = reseller
             created_at_ist = created_at.astimezone(IST)
             
+            # Get username from Telegram API if not in database
+            try:
+                user_info = bot.get_chat(telegram_id)
+                display_username = user_info.username or user_info.first_name
+            except:
+                display_username = username if username else "Unknown"
+
             response += (
                 f"🆔 𝗜𝗗: {telegram_id}\n"
-                f"👤 𝗨𝘀𝗲𝗿: @{username if username else 'Unknown'}\n"
+                f"👤 𝗨𝘀𝗲𝗿: @{display_username}\n"
                 f"💰 𝗕𝗮𝗹𝗮𝗻𝗰𝗲: Credits{balance}\n"
                 f"📅 𝗝𝗼𝗶𝗻𝗲𝗱: {created_at_ist.strftime('%Y-%m-%d %H:%M:%S')} IST\n"
                 "━━━━━━━━━━━━━━━\n"
             )
-            
+
         bot.reply_to(message, response)
         
     except Exception as e:
         bot.reply_to(message, f"❌ Error fetching resellers: {str(e)}")
+
+@bot.message_handler(commands=['removecredits'])
+def remove_credits(message):
+    if str(message.from_user.id) not in ADMIN_IDS:
+        bot.reply_to(message, "⛔️ Only administrators can remove credits.")
+        return
+    
+    try:
+        args = message.text.split()
+        if len(args) != 3:
+            bot.reply_to(message, "📝 Usage: /removecredits <telegram_id> <amount>")
+            return
+            
+        telegram_id = args[1]
+        amount = int(args[2])
+        
+        cursor.execute("""
+            UPDATE resellers 
+            SET balance = GREATEST(0, balance - %s)
+            WHERE telegram_id = %s 
+            RETURNING balance
+        """, (amount, telegram_id))
+        
+        result = cursor.fetchone()
+        if not result:
+            bot.reply_to(message, "❌ Reseller not found!")
+            return
+            
+        connection.commit()
+        
+        bot.reply_to(message, f"""
+✅ Credits Removed Successfully
+👤 Telegram ID: {telegram_id}
+💰 Removed Amount: Credits{amount}
+💳 New Balance: Credits{result[0]}
+""")
+        
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)}")
+        connection.rollback()
+
+@bot.message_handler(commands=['removereseller'])
+def remove_reseller(message):
+    if str(message.from_user.id) not in ADMIN_IDS:
+        bot.reply_to(message, "⛔️ Only administrators can remove resellers.")
+        return
+
+    try:
+        args = message.text.split()
+        if len(args) != 2:
+            bot.reply_to(message, "📝 Usage: /removereseller <telegram_id>")
+            return
+
+        telegram_id = args[1]
+
+        # Get reseller info and try to fetch current username from Telegram
+        cursor.execute("""
+            SELECT username, balance 
+            FROM resellers 
+            WHERE telegram_id = %s
+        """, (telegram_id,))
+        
+        result = cursor.fetchone()
+        if not result:
+            bot.reply_to(message, "❌ Reseller not found!")
+            return
+
+        stored_username, balance = result
+
+        # Try to get current username from Telegram API
+        try:
+            user_info = bot.get_chat(telegram_id)
+            current_username = user_info.username or user_info.first_name
+        except:
+            current_username = stored_username
+
+        # Use the most up-to-date username
+        display_username = current_username if current_username else stored_username
+
+        # Delete reseller and associated transactions
+        cursor.execute("""
+            DELETE FROM reseller_transactions 
+            WHERE reseller_id = %s
+        """, (telegram_id,))
+        
+        cursor.execute("""
+            DELETE FROM resellers 
+            WHERE telegram_id = %s
+        """, (telegram_id,))
+        
+        connection.commit()
+
+        admin_message = f"""
+✅ 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗥𝗲𝗺𝗼𝘃𝗲𝗱 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆
+👤 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲: @{display_username}
+🆔 𝗧𝗲𝗹𝗲𝗴𝗿𝗮𝗺 𝗜𝗗: {telegram_id}
+💰 𝗙𝗶𝗻𝗮𝗹 𝗕𝗮𝗹𝗮𝗻𝗰𝗲: Credits{balance}
+📅 𝗥𝗲𝗺𝗼𝘃𝗲𝗱: {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')} IST"""
+
+        bot.reply_to(message, admin_message)
+
+        # Notify other admins
+        for admin in ADMIN_IDS:
+            if admin != str(message.from_user.id):
+                bot.send_message(admin, f"""
+🚫 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗥𝗲𝗺𝗼𝘃𝗲𝗱 𝗔𝗹𝗲𝗿𝘁
+👤 𝗥𝗲𝗺𝗼𝘃𝗲𝗱 𝗯𝘆: @{message.from_user.username}
+🆔 𝗥𝗲𝗺𝗼𝘃𝗲𝗱 𝗜𝗗: {telegram_id}
+👤 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲: @{display_username}
+📅 𝗧𝗶𝗺𝗲: {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')} IST""")
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)}")
+        connection.rollback()
+
 
 @bot.message_handler(commands=['broadcast'])
 def broadcast_message(message):
