@@ -8,6 +8,24 @@ import psycopg2
 import logging
 import time
 
+from psycopg2 import pool
+
+# Create connection pool
+connection_pool = pool.SimpleConnectionPool(
+    1, 20,
+    host="aws-0-ap-south-1.pooler.supabase.com",
+    database="postgres",
+    user="postgres.ldmyijysjjaimrbpqmek",
+    password="Uthaya$4123",
+    port=6543
+)
+
+def get_connection():
+    return connection_pool.getconn()
+
+def release_connection(conn):
+    connection_pool.putconn(conn)
+    
 # Bot Configuration
 RESELLER_BOT_TOKEN = '7490965174:AAHmssJ7JPflECb1YCJlkjFwkC-aCbLnLW8'
 ADMIN_IDS = ["7418099890"]  # Add admin Telegram IDs
@@ -29,6 +47,26 @@ DB_CONFIG = {
     "password": "Uthaya$4123",
     "port": 6543
 }
+
+def get_db_connection():
+    max_retries = 3
+    retry_delay = 5  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            connection = psycopg2.connect(
+                host="aws-0-ap-south-1.pooler.supabase.com",
+                database="postgres",
+                user="postgres.ldmyijysjjaimrbpqmek", 
+                password="Uthaya$4123",
+                port=6543
+            )
+            connection.autocommit = False
+            return connection
+        except psycopg2.Error as e:
+            if attempt == max_retries - 1:
+                raise e
+            time.sleep(retry_delay)
 
 # Initialize bot and timezone
 bot = telebot.TeleBot(RESELLER_BOT_TOKEN)
@@ -320,14 +358,12 @@ def generate_key(message):
         if len(args) != 2:
             bot.reply_to(message, """
 📝 𝗨𝘀𝗮𝗴𝗲: /generatekey <duration>
-
 ⏱️ 𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲 𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻𝘀:
-• 2h  ➜  25 Credits
-• 1d  ➜  200 Credits
-• 7d  ➜  800 Credits
-• 30d ➜  1,200 Credits
-• 60d ➜  2,000 Credits
-
+• 2h ➜ 25 Credits
+• 1d ➜ 200 Credits
+• 7d ➜ 800 Credits
+• 30d ➜ 1,200 Credits
+• 60d ➜ 2,000 Credits
 📌 Example: /generatekey 2h""")
             return
 
@@ -335,72 +371,94 @@ def generate_key(message):
         if duration not in PRICES:
             bot.reply_to(message, "❌ Invalid duration! Use 2h, 1d, 7d, 30d, or 60d")
             return
-            
-        price = PRICES[duration]
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
         
-        # Check reseller balance
-        cursor.execute("SELECT balance, username FROM resellers WHERE telegram_id = %s", (str(message.from_user.id),))
-        result = cursor.fetchone()
-        
-        if not result:
-            bot.reply_to(message, "⛔️ You are not registered as a reseller. Contact @its_MATRIX_King")
-            return
+        try:
+            # Check reseller balance
+            cursor.execute("""
+                SELECT balance, username FROM resellers 
+                WHERE telegram_id = %s
+            """, (str(message.from_user.id),))
             
-        balance, username = result
-        if balance < price:
-            bot.reply_to(message, f"""
+            result = cursor.fetchone()
+            if not result:
+                bot.reply_to(message, "⛔️ You are not registered as a reseller. Contact @its_MATRIX_King")
+                return
+
+            balance, username = result
+            price = PRICES[duration]
+            
+            if balance < price:
+                bot.reply_to(message, f"""
 ❌ 𝗜𝗻𝘀𝘂𝗳𝗳𝗶𝗰𝗶𝗲𝗻𝘁 𝗕𝗮𝗹𝗮𝗻𝗰𝗲!
 Required: {price:,} Credits
 Available: {balance:,} Credits""")
-            return
-            
-        # Generate key with improved format
-        key = f"MATRIX-{duration.upper()}-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        
-        # Calculate duration in seconds
-        duration_map = {
-            "2h": 7200,    
-            "1d": 86400,   
-            "7d": 604800,  
-            "30d": 2592000,
-            "60d": 5184000 
-        }
-        duration_seconds = duration_map[duration]
-        
-        # Database operations
-        cursor.execute("""
-            UPDATE resellers 
-            SET balance = balance - %s 
-            WHERE telegram_id = %s
-            RETURNING balance""", (price, str(message.from_user.id)))
-        
-        new_balance = cursor.fetchone()[0]
-        
-        cursor.execute("""
-            INSERT INTO reseller_transactions 
-            (reseller_id, type, amount, key_generated, duration)
-            VALUES (%s, 'KEY_GENERATION', %s, %s, %s)""", 
-            (str(message.from_user.id), price, key, duration))
-        
-        cursor.execute("""
-            INSERT INTO unused_keys 
-            (key, duration, created_at, is_used)
-            VALUES (%s, %s, NOW(), FALSE)""", 
-            (key, duration_seconds))
-        
-        connection.commit()
-        
-        bot.reply_to(message, f"""
-✅ 𝗞𝗲𝘆 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆!
+                return
 
+            # Generate key
+            key = f"MATRIX-{duration.upper()}-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+            duration_seconds = {
+                "2h": 7200,
+                "1d": 86400,
+                "7d": 604800,
+                "30d": 2592000,
+                "60d": 5184000
+            }[duration]
+
+            # Database operations in transaction
+            cursor.execute("""
+                UPDATE resellers 
+                SET balance = balance - %s 
+                WHERE telegram_id = %s 
+                RETURNING balance
+            """, (price, str(message.from_user.id)))
+            
+            new_balance = cursor.fetchone()[0]
+
+            cursor.execute("""
+                INSERT INTO reseller_transactions 
+                (reseller_id, type, amount, key_generated, duration)
+                VALUES (%s, 'KEY_GENERATION', %s, %s, %s)
+            """, (str(message.from_user.id), price, key, duration))
+
+            cursor.execute("""
+                INSERT INTO unused_keys 
+                (key, duration, created_at, is_used)
+                VALUES (%s, %s, NOW(), FALSE)
+            """, (key, duration_seconds))
+
+            # Notify admin about key generation
+            admin_message = f"""
+🔑 𝗡𝗲𝘄 𝗞𝗲𝘆 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱
+👤 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿: @{username}
+🆔 𝗜𝗗: {message.from_user.id}
+🔑 𝗞𝗲𝘆: {key}
+⏱️ 𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻: {duration.upper()}
+💰 𝗖𝗿𝗲𝗱𝗶𝘁𝘀 𝗨𝘀𝗲𝗱: {price:,}"""
+
+            for admin in admin_id:
+                bot.send_message(admin, admin_message)
+
+            connection.commit()
+            
+            bot.reply_to(message, f"""
+✅ 𝗞𝗲𝘆 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆!
 🔑 𝗞𝗲𝘆: `{key}`
 ⏱️ 𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻: {duration.upper()}
 💰 𝗖𝗿𝗲𝗱𝗶𝘁𝘀 𝗨𝘀𝗲𝗱: {price:,}
 💳 𝗥𝗲𝗺𝗮𝗶𝗻𝗶𝗻𝗴: {new_balance:,}""")
 
+        finally:
+            cursor.close()
+            connection.close()
+
     except Exception as e:
         bot.reply_to(message, f"❌ 𝗘𝗿𝗿𝗼𝗿: {str(e)}")
-        connection.rollback()
+        if 'connection' in locals():
+            connection.rollback()
+            connection.close()
 
 @bot.message_handler(commands=['balance'])
 def check_balance(message):
